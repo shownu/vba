@@ -1,0 +1,143 @@
+Option Explicit
+
+Const strHome = "Portal Home"
+Const strPlan = "PlannedWPs"
+Const strWPtasks = "WPbyTask"
+Const strTaskInfo = "Task Info"
+Const strFlights = "Ground Times"
+Const strProd = "Production Plan"
+
+Sub archive()
+
+    Dim wsname As String
+    wsname = Application.InputBox(prompt:="Please select a date from column A to archive its contents.", Type:=8)
+        If wsname = "False" Then
+            Exit Sub
+        End If
+    wsname = Format(wsname, "yyyymmdd")
+    
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsDate, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsDate = ThisWorkbook.Worksheets(wsname)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+    
+    Call wipeInfo
+    
+    Dim todaysdate As String
+    Dim dateCel As Range
+    Dim todayLoc As Range
+    Dim origCell, finalCell As Range
+    Dim planename As String
+    Dim i, planesCount As Long
+    Dim planesRng As Range
+    Dim b12day, mechday As Long
+    Dim b12night, mechnight As Long
+    Dim manpowerRow As Long
+    
+    planesCount = WorksheetFunction.CountA(wsDate.Columns(1)) - 1
+    Set dateCel = wsDate.Range("M4")
+    
+    b12day = wsDate.Range("P6")
+    b12night = wsDate.Range("P7")
+    mechday = wsDate.Range("Q6")
+    mechnight = wsDate.Range("Q7")
+    
+    'find date in prod plan and log location
+    wsProd.Activate
+    i = 1
+    On Error Resume Next
+    Do Until todayLoc.Text = dateCel.Text
+        i = i + 1
+        Set todayLoc = wsProd.Cells(i, 2)
+    Loop
+    On Error GoTo 0
+    Set origCell = wsDate.Range("A2")
+    manpowerRow = todayLoc.Offset(20, 0).Row
+    Set planesRng = wsProd.Range(todayLoc.Offset(1, 0), todayLoc.Offset(19, 0))
+    
+    For i = 1 To planesCount
+    
+        planename = "G-" & origCell.Text
+        Set finalCell = planesRng.Find(planename)
+    
+        'pdsc
+        If origCell.Offset(0, 4) <> Empty Then
+            finalCell.Offset(0, 5) = origCell.Offset(0, 4)
+        ElseIf origCell.Offset(0, 6) <> Empty Then
+            finalCell.Offset(0, 7) = origCell.Offset(0, 6)
+        Else: End If
+        
+        'planned wp hrs
+        If origCell.Offset(0, 5) <> Empty Then
+            finalCell.Offset(0, 6) = origCell.Offset(0, 5)
+        ElseIf origCell.Offset(0, 7) <> Empty Then
+            finalCell.Offset(0, 8) = origCell.Offset(0, 7)
+        Else: End If
+        
+        If origCell.Offset(1, 0) = Empty Then
+            Set origCell = origCell.End(xlDown)
+        Else: Set origCell = origCell.Offset(1, 0)
+        End If
+
+    Next i
+    
+    With wsProd
+        .Range("M" & manpowerRow) = b12day
+        .Range("N" & manpowerRow) = mechday
+        .Range("R" & manpowerRow) = b12night
+        .Range("S" & manpowerRow) = mechnight
+    End With
+    
+
+End Sub
+
+Sub wipeInfo()
+
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+    
+    Dim dateCel, todayLoc, firstCel As Range
+    Dim todaysdate As String
+    Dim i, j, days As Long
+    Dim infoRng, dayRng, nightRng As Range
+    
+    days = wsHome.Range("NoDays").Value
+    
+    For j = 1 To days
+    
+        Set dateCel = wsHome.Range("AboveDateList").Offset(j, 0)
+        todaysdate = Format(dateCel, "dd mmmm yyyy")
+    
+        wsProd.Activate
+        i = 1
+        On Error Resume Next
+        Do Until todayLoc.Text = todaysdate
+            i = i + 1
+            Set todayLoc = wsProd.Cells(i, 2)
+        Loop
+        On Error GoTo 0
+        Set firstCel = todayLoc.Offset(1, 0)
+        Set infoRng = wsProd.Range(firstCel.Offset(1, 5), firstCel.Offset(18, 9))
+        Set dayRng = wsProd.Range(firstCel.Offset(19, 11), firstCel.Offset(19, 12))
+        Set nightRng = wsProd.Range(firstCel.Offset(19, 16), firstCel.Offset(19, 17))
+        
+        infoRng.ClearContents
+        dayRng.ClearContents
+        nightRng.ClearContents
+    
+    Next j
+
+End Sub
