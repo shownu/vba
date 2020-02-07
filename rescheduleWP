@@ -1,0 +1,41 @@
+Option Explicit
+
+Sub reschedule()
+
+    Dim freerow As Long
+    Dim taskname, planename As String
+    Dim pasteinto As Range
+    Dim chosencell As Range
+    
+    If Selection.Column = 9 Then
+    
+        freerow = Range("U3").End(xlDown).Row + 1
+        
+        Set chosencell = Selection
+        taskname = chosencell.Text
+        chosencell.Copy Destination:=Cells(freerow, 21)
+        chosencell = 0
+        
+        Selection.End(xlToLeft).Select
+        Selection.End(xlUp).Select
+        planename = Selection.Text
+        
+        Cells(freerow, 20) = planename
+
+    End If
+    
+    If Selection.Column = 21 Then
+        Set chosencell = Selection
+        taskname = chosencell.Text
+        planename = chosencell.Offset(0, -1).Text
+        Set pasteinto = Range("I:I").Find(what:=planename, lookat:=xlPart)
+        Set pasteinto = Range("I:I").Find(what:=0, After:=pasteinto, lookat:=xlWhole)
+        With chosencell
+            .Offset(0, -1).Delete
+            .Offset(0, 1).Delete
+            .Delete
+        End With
+        pasteinto = taskname
+    End If
+
+End Sub
