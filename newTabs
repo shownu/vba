@@ -1,0 +1,613 @@
+Option Explicit
+
+Const strHome = "Portal Home"
+Const strPlan = "PlannedWPs"
+Const strWPtasks = "WPbyTask"
+Const strTaskInfo = "Task Info"
+Const strFlights = "Ground Times"
+Const strProd = "Production Plan"
+Dim boolNoDate As Boolean
+
+Sub createAndFillTabs()
+
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsDate, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+    
+    '------------------------check all info is in sheet---------------------------
+    
+    Dim lastflight, lastwp, lastcal As Long
+    Dim days As Long
+    Dim finaldate, lastupdate As Date
+    Dim strFinaldate As String
+    Dim srch As Range
+    
+    days = wsHome.Range("NoDays")
+    finaldate = Date + days
+    lastupdate = wsHome.Range("WPLastupdate")
+    strFinaldate = Format(finaldate, "dd mmmm yyyy")
+    
+    Set srch = Nothing
+    On Error Resume Next
+    Set srch = wsFlights.Range("B:B").Find(finaldate)
+    On Error GoTo 0
+    If srch Is Nothing Then
+        MsgBox "No flight information for date range (today to " & strFinaldate & "). Please update and try again."
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+    
+    If lastupdate < finaldate Then
+        MsgBox "No WPs loaded for date range (today to " & strFinaldate & "). Please update and try again."
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+ 
+'    Dim ufWait As ufWait
+'
+'    Set ufWait = New ufWait
+'    ufWait.Show vbModeless
+'    ufWait.Repaint
+    
+    '--------------------------------restore---------------------------
+    
+    Application.ScreenUpdating = False
+
+    Call newTabs
+    
+    Call wipeDates
+    
+    If boolNoDate = True Then Exit Sub
+    
+    '----------------------------declare variables-----------------------------
+
+    Dim n, i, j, k, v As Long
+    Dim wsname As String
+    Dim firstrow, lastrow, rowno As Long
+    Dim boxbox As Range
+
+    '----------------------------------tab setup-------------------------------------
+    
+    Dim infotable() As Variant
+    Dim tablesize, notasks As Long
+    Dim strwpname As Range
+    Dim STRwsname, wptitle As String
+    Dim currentwptask As Range
+    Dim shtdate, planename As String
+    Dim planeloc As Long
+    
+    For n = 1 To days
+    
+        i = 1
+        j = 1
+        
+        wsname = wsHome.Range("AboveDateList").Offset(n, 0)
+        STRwsname = wsHome.Range("AboveDateList").Offset(n, 0).Text
+        tablesize = WorksheetFunction.CountIf(wsPlan.Range("C:C"), DateValue(wsname))
+        i = wsPlan.Range("C:C").Find(DateValue(wsname)).Row
+        
+        ReDim infotable(1 To tablesize, 2)
+        Do Until wsname <> wsPlan.Cells(i, 3)
+        Set strwpname = wsPlan.Cells(i, 1)
+            planename = strwpname.Offset(0, 1)
+            notasks = WorksheetFunction.CountIf(wsWPtasks.Range("A:A"), strwpname)
+            infotable(j, 0) = strwpname.Text
+            infotable(j, 1) = planename
+            infotable(j, 2) = notasks
+            i = i + 1
+            j = j + 1
+        Loop
+        
+        j = 1
+        i = 1
+        v = 2
+        
+        With Worksheets(STRwsname)
+            .Activate
+            Do Until j = tablesize + 1
+                .Range(.Cells(v, 1), .Cells(v, 6)).Interior.Color = rgbAliceBlue
+                .Range(.Cells(v, 9), .Cells(v, 10)).Interior.Color = rgbAliceBlue
+                .Range(.Cells(v, 1), .Cells(v, 10)).Font.Bold = True
+                firstrow = v + 2
+                lastrow = v + infotable(j, 2) + 1
+                
+                .Cells(v, 1) = infotable(j, 1)
+                .Cells(v, 4) = "=IF(C" & v & "=0,24-B" & v & ",C" & v & "-B" & v & ")"
+                .Cells(v, 5) = "=IF(C" & v & "=0,"" "",4)"
+                .Cells(v, 6) = "=$J$" & v
+                .Cells(v, 9) = infotable(j, 0)
+                .Cells(v, 10) = "=SUM(J" & (v + 1) & ":J" & (v + 1 + infotable(j, 2)) & ")"
+                .Cells(v + 1, 9) = "UNSCHEDULED"
+                
+                wptitle = .Cells(v, 9).Text
+                Set currentwptask = Nothing
+                On Error Resume Next
+                Set currentwptask = wsWPtasks.Range("A:A").Find(wptitle).Offset(0, 1)
+                On Error GoTo 0
+                If Not currentwptask Is Nothing Then
+                    For k = firstrow To lastrow
+                        .Cells(k, 9) = currentwptask
+                        If Len(.Cells(k, 9).Text) = 7 Then
+                            .Cells(k, 10) = "=VLOOKUP(VALUE($I" & k & "),IndividualTaskInfo,2,FALSE)" 'hmm
+                            Else: .Cells(k, 10) = "=VLOOKUP($I" & k & ",IndividualTaskInfo,2,FALSE)"
+                        End If
+                        Set currentwptask = currentwptask.Offset(1, 0)
+                    Next k
+                End If
+                v = lastrow + 1
+                j = j + 1
+            Loop
+            
+        j = 1
+              
+        Dim todaysdate As String
+        Dim test As Range
+        
+            Do Until j = tablesize + 1
+            Set test = Nothing
+            planename = infotable(j, 1)
+            shtdate = STRwsname
+            Set test = wsFlights.Range("A:A").Find(planename)
+                If Not test Is Nothing Then
+                    Do While test.Text = planename
+                        If test.Offset(0, 1).Text = shtdate Then
+                            planeloc = .Range("A:A").Find(planename).Row
+                            .Cells(planeloc, 2) = test.Offset(0, 2)
+                        End If
+                        If test.Offset(0, 3).Text = shtdate Then
+                            planeloc = .Range("A:A").Find(planename).Row
+                            .Cells(planeloc, 3) = test.Offset(0, 4)
+                        End If
+                    Set test = test.Offset(1, 0)
+                    Loop
+                End If
+            j = j + 1
+            Loop
+        
+            rowno = v 'set final row
+
+            .Cells(rowno + 2, 5) = "tot + PDSC day"
+            .Cells(rowno + 2, 6) = "=SUM(E2:F" & (rowno - 1) & ")"
+            .Cells(rowno + 2, 7) = "tot + PDSC nights"
+            .Cells(rowno + 2, 8) = "=SUM(G2:H" & (rowno - 1) & ")"
+
+            .Range("P8") = "=(P6+P7)*8"
+            .Range("P9") = "=F" & (rowno + 2)
+            .Range("P10") = "=P8-P9"
+            .Range("Q8") = "=(Q6+Q7)*8"
+            .Range("Q9") = "=H" & (rowno + 2)
+            .Range("Q10") = "=Q8-Q9"
+            .Range("Q3") = "=P9+Q9"
+
+            .Cells(rowno + 2, 5).Interior.Color = rgbAliceBlue
+            .Cells(rowno + 2, 7).Interior.Color = rgbAliceBlue
+            .Range(.Cells(rowno + 2, 5), .Cells(rowno + 2, 8)).Font.Bold = True
+            .Columns(2).NumberFormat = "hh:mm"
+            .Columns(3).NumberFormat = "hh:mm"
+            .Columns(4).NumberFormat = "h:mm"
+            .Columns(5).NumberFormat = "0"
+            .Columns(6).NumberFormat = "0.0"
+            .Columns(7).NumberFormat = "0"
+            .Columns(8).NumberFormat = "0.0"
+            .Columns(10).NumberFormat = "0.0"
+            .Columns(16).NumberFormat = "0.0"
+            .Columns(17).NumberFormat = "0.0"
+            .Range("P6:Q7").NumberFormat = "0"
+            .Range("P10:Q10").NumberFormat = "0.0;[Red]-0.0"
+            .Columns("A:Q").AutoFit
+
+            Set boxbox = .Range("L2:R11")
+            boxbox.BorderAround Weight:=xlMedium
+            Columns("L:L").ColumnWidth = 3
+            Columns("R:R").ColumnWidth = 3
+        End With
+        
+    Next n
+
+    '------------------add 24h where available----------------
+
+    Call addRestTimes
+    
+    Call addGrdTimes
+
+    wsHome.Activate
+
+    Application.ScreenUpdating = True
+
+    MsgBox "Complete!"
+        
+End Sub
+
+Sub newTabs()
+
+    Dim wsHome As Worksheet
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+
+    wsHome.Range("PreviewDateValues").ClearContents
+    
+    Dim days, j As Long
+    Dim dateNbr As String
+    Dim ws As Worksheet
+    
+    Application.DisplayAlerts = False
+        For Each ws In Worksheets
+            If ws.Name <> strProd And ws.Name <> "Hangar Plan" And ws.Name <> strHome _
+            And ws.Name <> strPlan And ws.Name <> strWPtasks _
+            And ws.Name <> strTaskInfo And ws.Name <> strFlights Then
+                ws.Delete
+            End If
+        Next ws
+    Application.DisplayAlerts = True
+    
+    With wsHome
+    days = .Range("NoDays").Value
+        With .Range("PreviewDateValues")
+            .Clear
+            .NumberFormat = "yyyymmdd"
+            .HorizontalAlignment = xlCenter
+        End With
+    End With
+    
+    For j = 1 To days
+    
+        wsHome.Range("AboveDateList").Offset(j, 0) = Date + (j - 1)
+        dateNbr = wsHome.Range("AboveDateList").Offset(j, 0).Text
+        Sheets.Add(After:=Sheets(Sheets.Count)).Name = dateNbr
+        Worksheets(dateNbr).Tab.Color = rgbHoneydew
+        
+        'for each sheet freeze top row and insert titles
+        With ActiveWindow
+            .SplitColumn = 0
+            .SplitRow = 1
+            .FreezePanes = True
+        End With
+               
+        With Worksheets(dateNbr)
+            .Range("A1") = "TAIL"
+            .Range("B1") = "ARR"
+            .Range("C1") = "DEP"
+            .Range("D1") = "GRD TIME"
+            .Range("E1") = "PDSC DAY"
+            .Range("F1") = "PLANNED HRS DAY"
+            .Range("G1") = "PDSC NIGHTS"
+            .Range("H1") = "PLANNED HRS NIGHTS"
+            .Range("I1") = "WP TITLE + TASKS"
+            .Range("J1") = "TOT HRS (WP only)"
+            .Range("A1:J1").Interior.Color = 15773696
+            
+            .Range("M3") = "OVERVIEW"
+            .Range("O3") = "TOT HRS PLANNED"
+            .Range("P5") = "DAY"
+            .Range("Q5") = "NIGHT"
+            .Range("M3").Font.Bold = True
+            .Range("O3").Font.Bold = True
+            .Range("P5").Font.Bold = True
+            .Range("Q5").Font.Bold = True
+            
+            .Range("O6") = "B1/B2"
+            .Range("O7") = "MECHS"
+            .Range("O8") = "HRS AVAILABLE"
+            .Range("O9") = "PLANNED"
+            .Range("O10") = "REMAINING"
+            .Range("O6:O10").Font.Bold = True
+            
+            .Range("U3") = "TO RESCHEDULE"
+            .Range("T4") = "TAIL"
+            .Range("U4") = "WP TASK"
+            .Range("V4") = "Action"
+            .Range("T3:V4").Font.Bold = True
+        End With
+        
+        With Worksheets(dateNbr)
+            .Range("M4") = Date + (j - 1)
+            .Range("M4").NumberFormat = "[$-809]dd mmmm yyyy;@"
+            .Columns("A:V").AutoFit
+        End With
+    
+    Next j
+    
+    'Call addHyperlinks
+    
+End Sub
+
+Public Sub wipeDates()
+
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+    
+    Dim dateCel, todayLoc, firstCel As Range
+    Dim todaysdate As String
+    Dim i, j, days As Long
+    Dim planesRng As Range
+    
+    days = wsHome.Range("NoDays").Value
+    
+    For j = 1 To days
+    
+        Set dateCel = wsHome.Range("AboveDateList").Offset(j, 0)
+        todaysdate = Format(dateCel, "dd mmmm yyyy")
+    
+        wsProd.Activate
+        i = 1
+        On Error Resume Next
+        Do Until todayLoc.Text = todaysdate
+            i = i + 1
+            If i = 3000 Then
+                MsgBox "Date not found in Production Plan. Please update and try again."
+                boolNoDate = True
+                Exit Sub
+            End If
+            Set todayLoc = wsProd.Cells(i, 2)
+        Loop
+        On Error GoTo 0
+        Set firstCel = todayLoc.Offset(1, 0)
+        Set planesRng = wsProd.Range(firstCel.Offset(1, 1), firstCel.Offset(18, 9))
+        
+        planesRng.ClearContents
+    
+    Next j
+
+End Sub
+
+Sub addHyperlinks()
+
+    Dim wsHome As Worksheet
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    
+    wsHome.Activate
+    
+    Dim days, i As Long
+    Dim rng As Range
+    
+    days = wsHome.Range("NoDays")
+  
+    For i = 1 To days
+        Set rng = Range("PreviewDateValues").Cells(i, 1)
+        rng.Hyperlinks.Add Anchor:=rng, Address:="", SubAddress:= _
+        "'" & CStr(ThisWorkbook.Worksheets(i + 8).Name) & "'!A1"
+        rng.Interior.Color = ThisWorkbook.Worksheets(i + 8).Tab.Color
+        rng.Font.Color = vbBlack
+    Next i
+
+End Sub
+
+Sub addRestTimes()
+
+    Dim wsHome, wsFlights As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+
+    '------------------------declare variables---------------------------
+
+    Dim daterangestart, daterangeend As Date
+    Dim days As Long
+    Dim arrdate, depdate As Date
+    Dim datedif, planerow As Long
+    Dim planename, wsname As String
+    Dim d, w, finalrow As Long
+    Dim arrStr, depStr As Long
+    Dim boolArr, boolDep As Boolean
+    Dim shtExists As Boolean
+    Dim ws As Worksheet
+    
+    With wsHome
+        days = .Range("NoDays")
+        daterangestart = .Range("AboveDateList").Offset(1, 0)
+        daterangeend = .Range("AboveDateList").Offset(days, 0)
+    End With
+    
+    finalrow = wsFlights.ListObjects("FlightInfo").Range.Rows.Count
+    
+    For d = 2 To finalrow
+    
+    arrdate = wsFlights.Cells(d, 2)
+    depdate = wsFlights.Cells(d, 4)
+        
+        If daterangestart < arrdate And arrdate < daterangeend Then
+            boolArr = True
+        End If
+        
+        If daterangestart < depdate And depdate < daterangeend Then
+            boolDep = True
+        End If
+        
+        If boolArr = True Or boolDep = True Then
+    
+            datedif = depdate - arrdate
+            
+            If datedif > 1 Then
+            planename = wsFlights.Cells(d, 1).Text
+            arrStr = wsFlights.Cells(d, 2).Text
+            depStr = wsFlights.Cells(d, 4).Text
+            
+                For w = 1 To (datedif - 1)
+                    wsname = Format(arrdate + w, "yyyymmdd")
+                    
+                    Set ws = Nothing
+                    On Error Resume Next
+                    Set ws = Worksheets(wsname)
+                    On Error GoTo 0
+                    If Not ws Is Nothing Then
+                        shtExists = True
+                    End If
+                    
+                    If shtExists = True Then
+                        planerow = 0
+                        On Error Resume Next
+                        planerow = Worksheets(wsname).Range("A:A").Find(planename).Row
+                        On Error GoTo 0
+                            If planerow <> 0 Then
+                                With Worksheets(wsname).Cells(planerow, 4)
+                                    .NumberFormat = "@"
+                                    .HorizontalAlignment = xlRight
+                                    .FormulaLocal = "24:00"
+                                End With
+                            End If
+                    End If
+                    shtExists = False
+                Next w
+                
+            End If
+        
+        End If
+        
+        boolArr = False
+        boolDep = False
+    
+    Next d
+    
+End Sub
+
+Sub addGrdTimes()
+
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+    
+    Sheets(strFlights).Visible = True
+    
+    Dim fleetSize, days, rowscount As Long
+    Dim planename As String
+    Dim test, planeloc As Range
+    Dim i, j As Long
+    Dim todayLoc, dateCel As Range
+    Dim origCell, finalCell As Range
+    Dim rng, tabletop As Range
+    Dim ogwsname, wsname, USwsname, STRwsname As String
+    Dim shtdate As String
+    Dim planelocTbl, planelocProd As Range
+    
+    fleetSize = wsHome.Range("TailNames").Rows.Count
+    days = wsHome.Range("NoDays").Value
+    
+    For j = 1 To days
+    
+        STRwsname = wsHome.Range("AboveDateList").Offset(j, 0).Text
+        ogwsname = wsHome.Range("AboveDateList").Offset(j, 0)
+        wsname = Format(ogwsname, "dd mmmm yyyy")
+        USwsname = Format(ogwsname, "mm/dd/yyyy")
+        
+        'find date cell
+        wsProd.Activate
+        i = 1
+        On Error Resume Next
+        Do Until todayLoc.Text = wsname
+            i = i + 1
+            Set todayLoc = wsProd.Cells(i, 2)
+        Loop
+        On Error GoTo 0
+        Set finalCell = todayLoc.Offset(2, 0)
+        finalCell.Select
+        
+        With wsFlights
+            .Activate
+            .ListObjects("FlightInfo").Range.AutoFilter Field:=2, Operator:= _
+            xlFilterValues, Criteria2:=Array(2, USwsname)
+            .Range("A1").Select
+            .Range(Selection, Selection.End(xlToRight)).Select
+            .Range(Selection, Selection.End(xlDown)).Select
+            Set rng = Selection
+            rowscount = rng.Rows.Count - 1
+            rng.Copy Destination:=finalCell.Offset(0, 30)
+        End With
+        
+        With wsProd
+            .Activate
+            Set tabletop = finalCell.Offset(0, 30)
+            Set planelocTbl = tabletop.Offset(1, 0)
+            
+            Do Until planelocTbl = ""
+                planename = planelocTbl.Text
+                Set planelocProd = .Range("B:B").Find("G-" & planename, todayLoc)
+                
+                'if arr cell already filled then new entry needed
+                If planelocProd.Offset(0, 1) <> "" Then
+                    Set planelocProd = finalCell.End(xlDown).Offset(1, 0)
+                    planelocProd = "G-" & planename
+                End If
+                
+                planelocProd.Offset(0, 1) = planelocTbl.Offset(0, 2)
+                Set planelocTbl = planelocTbl.Offset(1, 0)
+            Loop
+            
+            tabletop.Select
+            .Range(Selection, Selection.End(xlToRight)).Select
+            .Range(Selection, Selection.End(xlDown)).Select
+            Selection.Delete Shift:=xlToLeft
+            
+        End With
+        
+        With wsFlights
+            .Activate
+            .ListObjects("FlightInfo").Range.AutoFilter Field:=2
+    
+            .ListObjects("FlightInfo").Range.AutoFilter Field:=4, Operator:= _
+            xlFilterValues, Criteria2:=Array(2, USwsname)
+            .Range("A1").Select
+            .Range(Selection, Selection.End(xlToRight)).Select
+            .Range(Selection, Selection.End(xlDown)).Select
+            Set rng = Selection
+            rng.Copy Destination:=finalCell.Offset(0, 30)
+            .ListObjects("FlightInfo").Range.AutoFilter Field:=4
+            
+        End With
+        
+        With wsProd
+            .Activate
+            Set tabletop = finalCell.Offset(0, 30)
+            Set planelocTbl = tabletop.Offset(1, 0)
+            
+            Do Until planelocTbl = ""
+                planename = planelocTbl.Text
+                Set planelocProd = .Range("B:B").Find("G-" & planename, todayLoc)
+                
+                'if dep cell already filled then new entry needed
+                If planelocProd.Offset(0, 2) <> "" Then
+                    Set planelocProd = finalCell.End(xlDown).Offset(1, 0)
+                    planelocProd = "G-" & planename
+                End If
+                
+                planelocProd.Offset(0, 2) = planelocTbl.Offset(0, 4)
+                Set planelocTbl = planelocTbl.Offset(1, 0)
+            Loop
+            
+            tabletop.Select
+            .Range(Selection, Selection.End(xlToRight)).Select
+            .Range(Selection, Selection.End(xlDown)).Select
+            Set rng = Selection
+            rng.Delete Shift:=xlToLeft
+            
+        End With
+        
+    Next j
+    
+    Sheets(strFlights).Visible = False
+
+End Sub
+
+
+
+
+
+
+
