@@ -1,0 +1,212 @@
+Option Explicit
+
+Const strHome = "Portal Home"
+Const strPlan = "PlannedWPs"
+Const strWPtasks = "WPbyTask"
+Const strTaskInfo = "Task Info"
+Const strFlights = "Ground Times"
+Const strProd = "Production Plan"
+
+Sub loadWPs()
+
+    Dim wsHome, wsPlan, wsWPtasks, wsTaskInfo As Worksheet
+    Dim wsFlights, wsProd As Worksheet
+    
+    Set wsHome = ThisWorkbook.Worksheets(strHome)
+    Set wsPlan = ThisWorkbook.Worksheets(strPlan)
+    Set wsWPtasks = ThisWorkbook.Worksheets(strWPtasks)
+    Set wsTaskInfo = ThisWorkbook.Worksheets(strTaskInfo)
+    Set wsFlights = ThisWorkbook.Worksheets(strFlights)
+    Set wsProd = ThisWorkbook.Worksheets(strProd)
+
+    Application.ScreenUpdating = False
+
+    Dim i, datedif As Long
+    Dim wpsTable As ListObject
+    Dim tblName As String
+    Dim firstdate, lastdate As Date
+    Dim filepath, wptablename As String
+    Dim b As Range
+    'Dim workbookname As String
+    'Dim wbModel As Workbook
+    
+    'workbookname = ThisWorkbook.Name
+    'Set wbModel = Workbooks(workbookname)
+    
+    '----------------------check file exists---------------------
+    
+    wptablename = wsHome.Range("WPTableName").Text
+    filepath = wsHome.Range("Filepath").Text
+    
+    Dim pathcheck As String
+    
+    pathcheck = ""
+    On Error Resume Next
+    pathcheck = Dir(filepath & "\" & wptablename)
+    On Error GoTo 0
+    
+    If pathcheck = "" Then
+        MsgBox wptablename & " not found in " & filepath & ". Please check the filepath and document name are correct and try again."
+        Application.ScreenUpdating = True
+        Exit Sub
+    Else: Workbooks.Open Filename:=filepath & "\" & wptablename
+    End If
+
+    '-----------------------prepare new data--------------------------
+    
+     With Workbooks(wptablename).Worksheets("Sheet1")
+    
+        For i = 2 To .Range("D1").End(xlDown).Row
+            .Cells(i, 7) = .Cells(i, 7).Value / (24 * 60)
+        Next i
+
+        .Columns(6).NumberFormat = "yyyymmdd"
+        .Columns(7).NumberFormat = "hh:mm"
+
+    End With
+
+    '--------------------clear previous data---------------------
+
+    wsPlan.Activate
+    Columns("A:D").Delete Shift:=xlToLeft
+    
+    '-----------------import data--------------------
+
+    
+    With Workbooks(wptablename).Worksheets("Sheet1")
+        .Columns(1).Copy Destination:=wsPlan.Columns(1)
+        .Columns(2).Copy Destination:=wsPlan.Columns(2)
+        .Columns(6).Copy Destination:=wsPlan.Columns(3)
+        .Columns(7).Copy Destination:=wsPlan.Columns(4)
+    End With
+    
+    With wsPlan
+        .Range("A1").Select
+        .Range(Selection, Selection.End(xlToRight)).Select
+        .Range(Selection, Selection.End(xlDown)).Select
+        Set wpsTable = .ListObjects.Add(xlSrcRange, Selection, , xlYes)
+
+        With ActiveSheet
+            .ListObjects(1).Name = "Table1"
+        End With
+
+        With .ListObjects("Table1").Sort
+            .SortFields.Clear
+            .SortFields.Add Key:=Range("Table1[[#All],[start_time]]"), SortOn:=xlSortOnValues, Order _
+                :=xlAscending, DataOption:=xlSortNormal
+            .Header = xlYes
+            .Apply
+            .SortFields.Clear
+            .SortFields.Add Key:=Range("Table1[[#All],[start_date]]"), SortOn:=xlSortOnValues, Order _
+                :=xlAscending, DataOption:=xlSortNormal
+            .Header = xlYes
+            .Apply
+        End With
+    End With
+    
+    Workbooks(wptablename).Close SaveChanges:=False
+    
+    
+    '---------------------WP breakdown by task--------------------
+    
+    '----------------------check file exists---------------------
+
+    Dim bdtablename As String
+    Dim wbBd As Workbook
+
+    bdtablename = wsHome.Range("BreakdownTableName").Text
+
+    pathcheck = ""
+    On Error Resume Next
+    pathcheck = Dir(filepath & "\" & bdtablename)
+    On Error GoTo 0
+
+    If pathcheck = "" Then
+        MsgBox bdtablename & " not found in " & filepath & ". Please check the filepath and document name are correct and try again."
+        Application.ScreenUpdating = True
+        Exit Sub
+    Else: Workbooks.Open Filename:=filepath & "\" & bdtablename
+    End If
+    
+    Set wbBd = Workbooks(bdtablename)
+  
+    '--------------------clear previous data---------------------
+       
+    Dim z, finalrow As Long
+    
+    With wsWPtasks
+
+        z = 1
+        finalrow = .Range("A1").End(xlDown).Row
+    
+        Do Until z = (finalrow - 1)
+            .ListObjects(1).ListRows(1).Delete
+            z = z + 1
+        Loop
+        
+    End With
+
+    '-----------------------prepare data----------------------
+    With wbBd.Worksheets("Sheet1")
+        .Activate
+        finalrow = .Range("A1").End(xlDown).Row
+    
+        .Range("A2:B2").Select
+        .Range(Selection, Selection.End(xlDown)).Select
+        Selection.Copy Destination:=wsWPtasks.Range("A2")
+        
+        .Range("B2:P" & finalrow).Select
+        Selection.Copy Destination:=wsTaskInfo.Range("A2")
+    End With
+    
+    Workbooks(bdtablename).Close SaveChanges:=False
+    
+    With wsTaskInfo
+        .Activate
+        '.Range("IndividualTaskInfo[#All]").RemoveDuplicates Header:=xlYes 'whats up with this. only works sometimes. sometimes paste doesnt paste into table
+            z = 2
+            'dividing minute values by 60 to get hours
+            .Cells(z, 16) = "=SUM(B" & z & ":O" & z & ")/60" 'add all roles
+        For z = 2 To .Range("A1").End(xlDown).Row
+            .Cells(z, 16) = "=SUM(B" & z & ":O" & z & ")/60" 'add all roles
+        Next z
+        .Range("P2:P" & z).Copy
+        .Range("P2:P" & z).PasteSpecial xlPasteValues
+        .Range("B:O").Columns.Delete
+        .Range("B1") = "hrs"
+        'add header titles
+        .Columns("A:B").AutoFit
+        For i = 2 To .Range("A2").End(xlDown).Row
+            Set b = .Cells(i, 1)
+            b.FormulaR1C1 = .Cells(i, 1).Value
+        Next i
+        .Rows("2:2").Insert Shift:=xlDown, CopyOrigin:=xlFormatFromRightOrBelow
+        .Range("A2:B2").FormulaR1C1 = "0"
+        .Range("A2:B" & (z - 1)).Select
+        Selection.Name = "IndividualTaskInfo"
+    End With
+    
+    wsWPtasks.Activate
+    
+    With wsWPtasks.ListObjects("WPBreakdownByTask").Sort
+
+        .SortFields.Clear
+        .SortFields.Add Key:=Range("WPBreakdownByTask" & "[[#All],[wp]]"), SortOn:=xlSortOnValues _
+        , Order:=xlAscending, DataOption:=xlSortNormal
+        .Header = xlYes
+        .Apply
+
+    End With
+
+    '-------done----------
+    
+    wsHome.Range("WPLastUpdate") = wsPlan.Range("C1").End(xlDown)
+    
+    wsHome.Activate
+    
+    Application.ScreenUpdating = True
+    
+End Sub
+
+
+
